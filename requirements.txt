@@ -3,8 +3,7 @@ langchain
 langchain-core
 langchain-community
 langchain-google-genai
-langchain-text-splitters  <-- Bu paketi eklemelisiniz!
-
+langchain-text-splitters  
 # Diger bagimliliklar
 chromadb
 tiktoken
