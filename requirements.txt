@@ -1,9 +1,9 @@
 # Yeni ve Gerekli LangChain Parcalari
-langchain==0.2.11
-langchain-core==0.2.11
-langchain-community==0.2.11
-langchain-google-genai==0.0.32
-langchain-text-splitters==0.2.1 
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+langchain-text-splitters
 # Diger bagimliliklar
 chromadb
 tiktoken
