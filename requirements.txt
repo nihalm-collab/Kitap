@@ -3,3 +3,5 @@ langchain-community
 chromadb
 tiktoken
 sentence-transformers
+google-genai
+streamlit
