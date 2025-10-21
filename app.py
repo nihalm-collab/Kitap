@@ -7,10 +7,10 @@ import os
 import streamlit as st # Streamlit arayuzu icin
 
 # LangChain Kütüphaneleri
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains import RetrievalQA
