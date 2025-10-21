@@ -1,195 +1,133 @@
-# --- 2. VERI SETI HAZIRLAMA (Guncelleme: Token Gereksinimi) ---
-
-# Veri setine erisim icin Hugging Face token kullanilmaktadir.
-# Token, '.env' dosyasindan yuklenerek guvenli bir sekilde kullanilmaktadir.
-
+# --- 1. GEREKLILIKLERI VE KUTUPHANELERI ICERI AKTARMA ---
+# Tum teknik anlatimlar burada yorum satirlari icinde verilmektedir. [cite: 7]
 from datasets import load_dataset
 import pandas as pd
-from dotenv import load_dotenv # Yeni kütüphane
+from dotenv import load_dotenv
 import os
+import streamlit as st # Streamlit arayuzu icin
 
-# Ortam degiskenlerini yukle (.env dosyasindan)
-load_dotenv()
-HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-
-# Eğer token yuklenemediyse uyari ver
-if not HF_TOKEN:
-    print("HATA: HUGGINGFACE_TOKEN, .env dosyasindan yuklenemedi veya tanimli degil.")
-    # Token olmadan devam edemeyecegimiz icin programi durdurabiliriz.
-    # exit() 
-
-# Veri setini token kullanarak yukle
-try:
-    # Veri setini yuklerken 'token' parametresini kullanmak, kimlik dogrulamayi saglar.
-    dataset = load_dataset("alibayram/kitapyurdu_yorumlar", token=HF_TOKEN)
-    data_df = pd.DataFrame(dataset['train'])
-
-    print("Veri seti basariyla yuklendi. Ilk 5 satir:")
-    print(data_df.head())
-
-except Exception as e:
-    print(f"Veri seti yuklenirken hata olustu: {e}")
-    # Token hatasi veya baglanti hatasi olabilir.
-
-# --- ... RAG pipeline kodlari devam edecek.
-
-# ... onceki kodlar (load_dotenv, load_dataset, data_df, print(data_df.head())) ...
-
-# --- 2. VERI SETI HAZIRLAMA (Devam: RAG Icin Hazirlik) ---
-
-from langchain_community.document_loaders.dataframe import DataFrameLoader
+# LangChain Kütüphaneleri
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings # Yerel bir model kullanimi
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.docstore.document import Document
-
-# ----------------------------------------------------------------------
-# 2.1. DataFrame'i LangChain Belgelerine (Document) Dönüştürme
-# RAG sisteminde kaynak olarak 'yorum' kolonunu kullanacagiz.
-
-# Her satir icin bir LangChain Document objesi olusturulur.
-# 'page_content' = Yorum metni (kaynak bilgi)
-# 'metadata' = kitap_adi, yazar ve rating gibi ek bilgiler
-
-documents = []
-for index, row in data_df.iterrows():
-    # Sadece metin iceren ve kayitli yorumlari aliyoruz (NaN kontrolu)
-    if pd.notna(row['yorum']):
-        doc = Document(
-            page_content=row['yorum'],
-            metadata={
-                "kitap_adi": row['kitap_adi'],
-                "yazar": row['yazar'],
-                "rating": row['rating']
-            }
-        )
-        documents.append(doc)
-
-print(f"\nToplam olusturulan Document sayisi: {len(documents)}")
-
-# ----------------------------------------------------------------------
-# 2.2. Parçalama (Chunking)
-# Uzun yorumlari kucuk ve yonetilebilir parcalara ayirarak baglamsal dogrulugu artirma.
-
-# recursive splitter, metni belirtilen ayiricilarla (varsayilan: \n\n, \n, " ", "") parcalar.
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000, # Her bir parcada maksimum 1000 karakter
-    chunk_overlap=200, # Parcalarin %20'si (200 karakter) birbiriyle cakissin (baglami korumak icin)
-    length_function=len,
-)
-
-chunks = text_splitter.split_documents(documents)
-
-print(f"Toplam yorumdan olusan parca (chunk) sayisi: {len(chunks)}")
-
-# ----------------------------------------------------------------------
-# 2.3. Gömme (Embedding) ve Vektör Veritabanı Oluşturma
-# Metin parcalarini, LLM'in anlayacagi sayisal vektorlere donusturme.
-
-# **EMBEDDING MODELI SECIMI:**
-# HuggingFace (Yerel) Embedding Modelini seciyoruz. (Hata riskini azaltir, API gerektirmez)
-# Yüksek performans icin 'all-MiniLM-L6-v2' yaygin ve hizli bir secimdir.
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
-# Vektör veritabanini (ChromaDB) olusturma ve parcalari indeksleme
-# Bu islem uzun surebilir. 'persist_directory' ile DB'yi kaydederiz.
-persist_directory = './chroma_db'
-vector_store = Chroma.from_documents(
-    documents=chunks,
-    embedding=embeddings,
-    persist_directory=persist_directory
-)
-
-# Indekslemeyi tamamla ve DB'yi diske kaydet
-vector_store.persist()
-print(f"Chroma Vektör Veritabanı oluşturuldu ve {persist_directory} klasörüne kaydedildi.")
-
-# --- 4. COZUM MIMARISI (Hazirlik) ---
-# Bu asama RAG mimarisinin 'Retrieval' (Geri Getirme) adimini olusturur.
-# Sırada 'Generation' (Uretme) adimi ve LLM entegrasyonu var.
-# ...
-# ... onceki kodlar (ChromaDB olusturma ve persist kodu) ...
-
-# --- 4. ÇÖZÜM MIMARINIZ (RAG Zinciri) ---
-
-# Gerekli LangChain ve Gemini kütüphanelerini içe aktar
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains import RetrievalQA
 
-# ----------------------------------------------------------------------
-# 4.1. LLM ve Prompt Hazırlığı
+# --- GLOBAL AYARLAR ---
+# Veritabaninin kaydedilecegi dizin
+PERSIST_DIRECTORY = './chroma_db'
+# Embedding modeli
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+# LLM modeli
+LLM_MODEL_NAME = "gemini-2.0-flash"
 
-# API anahtarini ortam degiskeninden yukle
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# --- 2. VERI SETI VE RAG BILESENLERINI YUKLEME/OLUSTURMA ---
 
-if not GEMINI_API_KEY:
-    print("HATA: GEMINI_API_KEY, .env dosyasindan yuklenemedi veya tanimli degil.")
-    # API anahtari olmadan LLM calismaz.
+@st.cache_resource # Streamlit'in bileşenleri yeniden yüklemesini önler
+def initialize_rag_components():
+    """
+    RAG sisteminin kritik bilesenlerini (Veri Seti, Vektor DB, LLM) hazirlar.
+    """
+    load_dotenv()
+    HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# LLM'i tanimla (Gemini 2.0 Flash)
-# 'google_api_key' parametresi ile anahtari dogrudan iletmek hata riskini azaltir.
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
-    google_api_key=GEMINI_API_KEY,
-    temperature=0.1 # Daha tutarli ve gercekci cevaplar icin dusuk sicaklik
-)
+    if not GEMINI_API_KEY:
+        st.error("GEMINI_API_KEY, .env dosyasindan yuklenemedi. Lutfen kontrol edin.")
+        return None
 
-# RAG icin Prompt Template (Modelin cevabini yonlendirmek icin)
-prompt_template = """
-Sen, kitap yorumlarindan bilgi cikarmak uzere tasarlanmis bir uzmansin.
-Yalnizca asagidaki 'Baglam' icinde verilen bilgilere dayanarak kullanicinin sorusunu cevapla. 
-Eger baglamda yeterli bilgi yoksa, "Uzgunum, bu soruyla ilgili yeterli yorum bilgisine sahip degilim." diye cevap ver.
-Cevaplarini akici ve dogal bir dilde olustur.
+    # Vektor DB'nin varligini kontrol etme
+    if os.path.exists(PERSIST_DIRECTORY) and os.listdir(PERSIST_DIRECTORY):
+        st.info("Vektör Veritabanı (ChromaDB) diske kaydedilmis haliyle yukleniyor...")
+        embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+        vector_store = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embeddings)
+        
+    else:
+        st.warning("Vektör Veritabanı diskte bulunamadi, yeniden olusturuluyor (Bu islem zaman alabilir)...")
+        
+        # Veri setini yukle (Token ile)
+        try:
+            dataset = load_dataset("alibayram/kitapyurdu_yorumlar", token=HF_TOKEN)
+            data_df = pd.DataFrame(dataset['train'])
+        except Exception as e:
+            st.error(f"Veri seti yuklenirken hata olustu. Token'inizi kontrol edin: {e}")
+            return None
 
-Baglam:
-{context}
+        # LangChain Document'lara donusturme
+        documents = []
+        for index, row in data_df.iterrows():
+            if pd.notna(row['yorum']):
+                doc = Document(page_content=row['yorum'], metadata={"kitap_adi": row['kitap_adi'], "yazar": row['yazar'], "rating": row['rating']})
+                documents.append(doc)
 
-Soru: {question}
-"""
-PROMPT = ChatPromptTemplate.from_template(prompt_template)
+        # Parçalama (Chunking)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200, length_function=len)
+        chunks = text_splitter.split_documents(documents)
+        
+        # Gömme (Embedding) ve Vektör DB olusturma
+        embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+        vector_store = Chroma.from_documents(documents=chunks, embedding=embeddings, persist_directory=PERSIST_DIRECTORY)
+        vector_store.persist()
+        st.success("Vektör Veritabanı basariyla olusturuldu ve diske kaydedildi.")
 
-# ----------------------------------------------------------------------
-# 4.2. RAG Zincirini (Chain) Kurma
+    # LLM tanimlama (Gemini 2.0 Flash)
+    llm = ChatGoogleGenerativeAI(model=LLM_MODEL_NAME, google_api_key=GEMINI_API_KEY, temperature=0.1)
 
-# Vektor veritabanini (vector_store) bir Retriever (Geri Getirici) olarak kullan
-# Bu, kullanici sorgusuna en yakin belgeleri sececek.
-retriever = vector_store.as_retriever(
-    search_type="similarity",
-    search_kwargs={"k": 3} # Sorguya en yakin 3 belgeyi getir
-)
+    # Prompt Template (Daha onceki gibi)
+    prompt_template = """
+    Sen, kitap yorumlarindan bilgi cikarmak uzere tasarlanmis bir uzmansin.
+    Yalnizca asagidaki 'Baglam' icinde verilen bilgilere dayanarak kullanicinin sorusunu cevapla. 
+    Eger baglamda yeterli bilgi yoksa, "Uzgunum, bu soruyla ilgili yeterli yorum bilgisine sahip degilim." diye cevap ver.
+    Cevaplarini akici ve dogal bir dilde olustur.
 
-# RetrievalQA zinciri, RAG akisini yonetir:
-# 1. Kullanici sorusu gelir.
-# 2. Retriever (vector_store) ilgili 'context'u bulur.
-# 3. Prompt, 'context' ve 'question' ile birlestirilir.
-# 4. LLM (Gemini) cevabi uretir.
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff", # Tum kaynaklari tek bir prompt'a doldurur
-    retriever=retriever,
-    return_source_documents=True, # Kaynak belgeleri (yorum metinleri) dondurur
-    chain_type_kwargs={"prompt": PROMPT}
-)
+    Baglam:
+    {context}
 
-# ----------------------------------------------------------------------
-# 4.3. Test Sorgusu
+    Soru: {question}
+    """
+    PROMPT = ChatPromptTemplate.from_template(prompt_template)
 
-print("\n--- RAG Sistemi Baslatiliyor (Test Sorgusu) ---")
-test_query = "En cok hangi kitaplar hakkında olumlu yorumlar var ve bu yorumlardan biri nedir?"
+    # RAG Zincirini kurma
+    retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+    qa_chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever, return_source_documents=True, chain_type_kwargs={"prompt": PROMPT})
+    
+    return qa_chain
 
-result = qa_chain.invoke(test_query)
+# --- 3. STREAMLIT ARAYUZU VE CALISMA AKISI ---
 
-print(f"\nSoru: {test_query}")
-print(f"\nCevap (Gemini): {result['result']}")
-print("\n--- Kaynak Belgeler (Source Documents) ---")
+st.title("📚 Kitapyurdu Yorum Analizi Chatbot (RAG)") [cite: 24, 25]
+st.write("Bu chatbot, Kitapyurdu'ndaki binlerce yorumu analiz ederek sorularinizi Gemini 2.0 Flash ile cevaplar.")
 
-# Kaynak belgelerin metadata'larini (kitap adı, yazar) goruntule
-for doc in result['source_documents']:
-    print(f"Kitap Adı: {doc.metadata.get('kitap_adi', 'Bilinmiyor')}")
-    print(f"Yazar: {doc.metadata.get('yazar', 'Bilinmiyor')}")
-    print(f"Rating: {doc.metadata.get('rating', 'Bilinmiyor')}")
-    print("-" * 20)
+# RAG bilesenlerini yukle (Sadece bir kez calisir)
+qa_chain = initialize_rag_components()
 
-# --- 5. WEB ARAYÜZÜ (Sirada) ---
-# Sirada bu 'qa_chain'i Streamlit/Gradio ile bir web arayuzune tasimak var.
+if qa_chain:
+    # Kullanici girdisi
+    user_query = st.text_input("Sorgunuzu Girin:", placeholder="Örneğin: En çok hangi kitaplar önerilmiş?")
+
+    # Sorgulama dugmesi
+    if st.button("Sorgula"):
+        if user_query:
+            with st.spinner("Cevap araniyor ve uretiliyor..."):
+                try:
+                    # RAG zincirini calistir
+                    result = qa_chain.invoke(user_query)
+
+                    # Cevap alanlari
+                    st.header("Cevap")
+                    st.success(result['result'])
+
+                    # Kaynak belgeleri goster
+                    st.header("Kullanilan Kaynak Yorumlar")
+                    for i, doc in enumerate(result['source_documents']):
+                        with st.expander(f"Kaynak {i+1}: {doc.metadata.get('kitap_adi', 'Bilinmiyor')} - Yazar: {doc.metadata.get('yazar', 'Bilinmiyor')}"):
+                            st.write(f"**Derecelendirme (Rating):** {doc.metadata.get('rating', 'Bilinmiyor')}")
+                            st.markdown(f"**Yorum Metni:** {doc.page_content}")
+                            
+                except Exception as e:
+                    st.error(f"Sorgu islenirken bir hata olustu: {e}")
+                    st.warning("API anahtarinizin dogru oldugundan ve model erisiminizin bulundugundan emin olun.")
+        else:
+            st.warning("Lutfen bir sorgu girin.")
