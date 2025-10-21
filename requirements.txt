@@ -1,13 +1,15 @@
-# RAG Core
+# Yeni ve Gerekli LangChain Parcalari
 langchain
+langchain-core
 langchain-community
 langchain-google-genai
+langchain-text-splitters  <-- Bu paketi eklemelisiniz!
+
+# Diger bagimliliklar
 chromadb
 tiktoken
 sentence-transformers
-# Data Handling
 datasets
 pandas
 python-dotenv
-# Web Interface
 streamlit
