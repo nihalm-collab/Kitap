@@ -13,7 +13,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains.retrieval_qa import RetrievalQA
+from langchain_community.chains import RetrievalQA
 
 # --- GLOBAL AYARLAR ---
 # Veritabaninin kaydedilecegi dizin
