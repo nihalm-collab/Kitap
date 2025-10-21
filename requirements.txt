@@ -1,7 +1,13 @@
+# RAG Core
 langchain
 langchain-community
+langchain-google-genai
 chromadb
 tiktoken
 sentence-transformers
-google-genai
+# Data Handling
+datasets
+pandas
+python-dotenv
+# Web Interface
 streamlit
